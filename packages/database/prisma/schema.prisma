@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  MODERATOR
+}
+
+enum ContentType {
+  ARTICLE
+  COMMENT
+}
+
+enum SubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum Sentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+}
+
+enum Recommendation {
+  APPROVE
+  REVIEW
+  REJECT
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+model User {
+  id           String          @id @default(cuid())
+  email        String          @unique
+  passwordHash String
+  role         Role
+  createdAt    DateTime        @default(now())
+  logs         ModerationLog[]
+
+  @@index([email])
+  @@map("users")
+}
+
+model Submission {
+  id          String           @id @default(cuid())
+  title       String
+  body        String
+  authorName  String
+  type        ContentType
+  status      SubmissionStatus @default(PENDING)
+  submittedAt DateTime         @default(now())
+  logs        ModerationLog[]
+  analysis    AIAnalysis?
+
+  @@index([status])
+  @@index([type])
+  @@index([submittedAt])
+  @@map("submissions")
+}
+
+model ModerationLog {
+  id           String           @id @default(cuid())
+  submissionId String
+  moderatorId  String
+  action       SubmissionStatus
+  reason       String?
+  createdAt    DateTime         @default(now())
+  submission   Submission       @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  moderator    User             @relation(fields: [moderatorId], references: [id])
+
+  @@index([submissionId])
+  @@map("moderation_logs")
+}
+
+model AIAnalysis {
+  id             String         @id @default(cuid())
+  submissionId   String         @unique
+  toxicityScore  Float
+  sentiment      Sentiment
+  summary        String
+  recommendation Recommendation
+  rawPrompt      String?
+  errorFlag      Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  submission     Submission     @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@map("ai_analyses")
+}
