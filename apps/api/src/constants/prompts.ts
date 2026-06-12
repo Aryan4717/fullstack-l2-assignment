@@ -5,15 +5,15 @@ Analyse the following submission and respond with ONLY a valid JSON object match
 
 {
   "toxicityScore": <integer 0-10, where 0 is completely safe and 10 is extremely toxic>,
-  "sentiment": <"Positive" | "Neutral" | "Negative">,
+  "sentiment": <"POSITIVE" | "NEUTRAL" | "NEGATIVE">,
   "summary": <one sentence describing the content>,
-  "recommendation": <"Approve" | "Review" | "Reject">
+  "recommendation": <"APPROVE" | "REVIEW" | "REJECT">
 }
 
 Guidelines:
-- toxicityScore 0-3: Approve
-- toxicityScore 4-6: Review
-- toxicityScore 7-10: Reject
+- toxicityScore 0-3: APPROVE
+- toxicityScore 4-6: REVIEW
+- toxicityScore 7-10: REJECT
 - sentiment should reflect the overall emotional tone
 
 Submission Title: ${title}
