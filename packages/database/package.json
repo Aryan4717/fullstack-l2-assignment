@@ -5,6 +5,7 @@
   "main": "./dist/src/index.js",
   "types": "./src/index.ts",
   "scripts": {
+    "postinstall": "prisma generate",
     "build": "tsc",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
