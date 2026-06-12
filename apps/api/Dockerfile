@@ -26,7 +26,8 @@ WORKDIR /app
 
 RUN apk add --no-cache openssl
 
-RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
+# Install prisma CLI globally so it's always on PATH regardless of pnpm symlink issues
+RUN npm install -g prisma@5.22.0
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
@@ -40,4 +41,4 @@ WORKDIR /app/apps/api
 
 EXPOSE 4000
 
-CMD sh -c "../../node_modules/.bin/prisma migrate deploy --schema ../../packages/database/prisma/schema.prisma && node ../../packages/database/dist/prisma/seed.js && node dist/server.js"
+CMD ["sh", "-c", "prisma migrate deploy --schema /app/packages/database/prisma/schema.prisma && node /app/packages/database/dist/prisma/seed.js && node dist/server.js"]
