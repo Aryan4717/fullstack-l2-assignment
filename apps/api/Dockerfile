@@ -15,6 +15,7 @@ COPY packages/database ./packages/database
 COPY apps/api ./apps/api
 
 RUN cd packages/database && pnpm exec prisma generate
+RUN pnpm --filter @repo/database run build
 
 RUN pnpm --filter @repo/api run build
 
