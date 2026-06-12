@@ -129,4 +129,8 @@ export async function triggerAnalysis(id: string): Promise<AIAnalysis> {
   return fetchApi(`/api/analyse/${id}`, { method: 'POST' });
 }
 
+export async function seedSubmissions(): Promise<void> {
+  return fetchApi(`/api/admin/seed`, { method: 'POST' });
+}
+
 export { ApiError };
