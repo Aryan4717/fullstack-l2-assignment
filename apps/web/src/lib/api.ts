@@ -18,29 +18,10 @@ class ApiError extends Error {
   }
 }
 
-async function fetchApi<T>(
-  path: string,
-  init?: RequestInit
-): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
-    ...init,
-  });
+//─── Auth ────────────────────────────────────────────────────────────────────
 
-  const json = (await res.json()) as ApiResponse<T>;
-
-  if (!res.ok || !json.success) {
-    throw new ApiError(res.status, json.message ?? 'Request failed');
-  }
-
-  return json.data as T;
-}
-
-// ─── Auth ────────────────────────────────────────────────────────────────────
-
-// Login and logout go through Next.js Route Handlers so cookies are set on
-// the frontend domain — the only domain where Next.js middleware can read them.
+// Login/logout go through Next.js Route Handlers so the httpOnly cookie is
+// set on the frontend domain — the only place Next.js middleware can read it.
 export async function login(email: string, password: string): Promise<{ user: User; accessToken: string }> {
   const res = await fetch('/api/auth/login', {
     method: 'POST',
@@ -129,18 +110,30 @@ export async function updateSubmissionStatus(
   status: 'APPROVED' | 'REJECTED',
   reason?: string
 ): Promise<Submission> {
-  return fetchApi(`/api/submissions/${id}/status`, {
+  // Proxied through Next.js so the httpOnly cookie is forwarded as Bearer token
+  const res = await fetch(`/api/proxy/submissions/${id}/status`, {
     method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status, reason }),
   });
+  const json = (await res.json()) as ApiResponse<Submission>;
+  if (!res.ok || !json.success) throw new ApiError(res.status, json.message ?? 'Request failed');
+  return json.data!;
 }
 
 export async function triggerAnalysis(id: string): Promise<AIAnalysis> {
-  return fetchApi(`/api/analyse/${id}`, { method: 'POST' });
+  // Proxied through Next.js so the httpOnly cookie is forwarded as Bearer token
+  const res = await fetch(`/api/proxy/analyse/${id}`, { method: 'POST' });
+  const json = (await res.json()) as ApiResponse<AIAnalysis>;
+  if (!res.ok || !json.success) throw new ApiError(res.status, json.message ?? 'Request failed');
+  return json.data!;
 }
 
 export async function seedSubmissions(): Promise<void> {
-  return fetchApi(`/api/admin/seed`, { method: 'POST' });
+  // Proxied through Next.js so the httpOnly cookie is forwarded as Bearer token
+  const res = await fetch('/api/proxy/admin/seed', { method: 'POST' });
+  const json = (await res.json()) as ApiResponse<void>;
+  if (!res.ok || !json.success) throw new ApiError(res.status, json.message ?? 'Request failed');
 }
 
 export { ApiError };
