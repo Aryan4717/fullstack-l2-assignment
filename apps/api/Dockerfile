@@ -26,6 +26,7 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
 COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder /app/packages/database ./packages/database
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 
