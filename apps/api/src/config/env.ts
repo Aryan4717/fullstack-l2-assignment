@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { config } from 'dotenv';
+import { resolve } from 'path';
 
-config();
+config({ path: resolve(__dirname, '../../../../.env') });
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -14,6 +15,9 @@ const envSchema = z.object({
   OPENAI_API_KEY: z.string().min(1, 'OPENAI_API_KEY is required'),
   OPENAI_MODEL: z.string().default('gpt-4o-mini'),
   OPENAI_TIMEOUT_MS: z.string().transform(Number).default('15000'),
+  LANGFUSE_PUBLIC_KEY: z.string().optional(),
+  LANGFUSE_SECRET_KEY: z.string().optional(),
+  LANGFUSE_HOST: z.string().default('https://cloud.langfuse.com'),
 });
 
 const parsed = envSchema.safeParse(process.env);
