@@ -12,7 +12,8 @@ RUN pnpm install --frozen-lockfile
 
 COPY apps/web ./apps/web
 
-ARG NEXT_PUBLIC_API_URL=http://localhost:4000
+# NEXT_PUBLIC_* vars are baked in at build time — must be passed as build args
+ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
 RUN pnpm --filter @repo/web run build
@@ -32,8 +33,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./.next/static
 
 USER nextjs
+
 EXPOSE 3000
-ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+ENV PORT=3000
 
 CMD ["node", "server.js"]
