@@ -6,6 +6,8 @@ import type { IAnalysisRepository } from '../interfaces/repositories/IAnalysisRe
 import type { ISubmissionRepository } from '../interfaces/repositories/ISubmissionRepository';
 import { NotFoundError } from '../errors';
 import { MODERATION_PROMPT } from '../constants/prompts';
+import { getLangfuse } from '../lib/langfuse.client';
+import { env } from '../config/env';
 
 export class AnalysisService implements IAnalysisService {
   constructor(
@@ -23,8 +25,39 @@ export class AnalysisService implements IAnalysisService {
 
     const rawPrompt = MODERATION_PROMPT(submission.title, submission.body);
 
+    const lf = getLangfuse();
+    const trace = lf?.trace({
+      name: 'content-moderation',
+      input: { title: submission.title, contentType: submission.type },
+      metadata: { submissionId },
+      tags: [submission.type],
+    });
+
     try {
+      const generation = trace?.generation({
+        name: 'openai-moderation',
+        model: env.OPENAI_MODEL,
+        input: [{ role: 'user', content: rawPrompt }],
+      });
+
       const result = await this.provider.analyze(submission.title, submission.body);
+
+      generation?.update({ output: result });
+      generation?.end();
+
+      trace?.score({
+        name: 'toxicity',
+        value: result.toxicityScore / 10,
+        comment: `Recommendation: ${result.recommendation}, Sentiment: ${result.sentiment}`,
+      });
+
+      trace?.update({
+        output: { recommendation: result.recommendation, sentiment: result.sentiment },
+        tags: [submission.type, result.sentiment, result.recommendation],
+      });
+
+      await lf?.flushAsync();
+
       return this.analysisRepo.create({
         submissionId,
         ...result,
@@ -33,6 +66,10 @@ export class AnalysisService implements IAnalysisService {
       });
     } catch (err) {
       console.error('AI analysis failed, storing fallback:', err);
+
+      trace?.update({ output: 'provider-error', metadata: { error: true } });
+      await lf?.flushAsync();
+
       return this.analysisRepo.create({
         submissionId,
         toxicityScore: 0,
