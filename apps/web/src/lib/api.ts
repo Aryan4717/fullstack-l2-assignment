@@ -39,15 +39,25 @@ async function fetchApi<T>(
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
+// Login and logout go through Next.js Route Handlers so cookies are set on
+// the frontend domain — the only domain where Next.js middleware can read them.
 export async function login(email: string, password: string): Promise<{ user: User; accessToken: string }> {
-  return fetchApi('/api/auth/login', {
+  const res = await fetch('/api/auth/login', {
     method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
+  const json = (await res.json()) as ApiResponse<{ user: User; accessToken: string }>;
+  if (!res.ok || !json.success) throw new ApiError(res.status, json.message ?? 'Login failed');
+  return json.data!;
 }
 
 export async function logout(): Promise<void> {
-  await fetchApi('/api/auth/logout', { method: 'POST' });
+  await fetch('/api/auth/logout', {
+    method: 'POST',
+    credentials: 'include',
+  });
 }
 
 // ─── Submissions ─────────────────────────────────────────────────────────────
