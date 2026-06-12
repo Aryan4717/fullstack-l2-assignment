@@ -16,6 +16,9 @@
     "@prisma/client": "^5.22.0",
     "bcryptjs": "^2.4.3"
   },
+  "prisma": {
+    "seed": "ts-node --project tsconfig.json prisma/seed.ts"
+  },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "prisma": "^5.22.0",
