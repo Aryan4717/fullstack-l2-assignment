@@ -17,6 +17,7 @@ A production-grade full-stack web application for moderating user-submitted arti
 | Backend | Node.js, Express.js, TypeScript |
 | Database | PostgreSQL 16, Prisma ORM |
 | AI | OpenAI GPT-4o-mini (Chat Completions) |
+| Observability | Langfuse (LLM tracing, scoring, monitoring) |
 | Infrastructure | Docker, Docker Compose, Railway |
 | Testing | Vitest, Supertest |
 
@@ -146,6 +147,26 @@ Business logic never touches Prisma directly. The `SubmissionService` holds the 
 
 ### AI Strategy Pattern
 `IAnalysisProvider` is an interface. `OpenAIProvider` is one implementation. If the project needs to swap to a different LLM (Claude, Gemini), only the provider class changes — `AnalysisService` is untouched. This satisfies OCP (Open/Closed Principle).
+
+### Langfuse — LLM Observability (Bonus)
+Langfuse is integrated as an observability layer over every AI moderation call. This was not required by the assignment spec — it was added to demonstrate production-grade LLM engineering awareness.
+
+**Why Langfuse?**
+In production, AI calls are opaque — you cannot see what prompt was sent, what the model returned, how long it took, or whether quality is degrading over time. Langfuse solves this by capturing every LLM interaction as a structured, searchable trace.
+
+**What is being traced:**
+
+| Signal | Detail |
+|--------|--------|
+| **Trace** | One per moderation request — tagged with `ContentType` (ARTICLE / COMMENT) |
+| **Generation** | The OpenAI API call — full input prompt, model name (`gpt-4o-mini`), raw JSON output, latency |
+| **Score: `toxicity`** | `toxicityScore ÷ 10` (normalised 0–1) — lets you chart average toxicity over time in Langfuse UI |
+| **Tags** | Sentiment (`POSITIVE` / `NEUTRAL` / `NEGATIVE`) and recommendation (`APPROVE` / `REVIEW` / `REJECT`) per trace |
+| **Error tracking** | When OpenAI fails and the fallback fires, the trace is marked with `error: true` metadata |
+
+**Graceful degradation:** If `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` are not set, the client returns `null` and all tracing is silently skipped — the app works normally without any Langfuse credentials.
+
+**Architecture:** The Langfuse client is a singleton in `apps/api/src/lib/langfuse.client.ts`. The `AnalysisService` calls it — no changes were made to `IAnalysisProvider`, `OpenAIProvider`, or any other interface, keeping the integration non-invasive and SOLID-compliant.
 
 ---
 
