@@ -40,4 +40,4 @@ WORKDIR /app/apps/api
 
 EXPOSE 4000
 
-CMD sh -c "npx prisma migrate deploy --schema ../../packages/database/prisma/schema.prisma && node dist/server.js"
+CMD sh -c "../../node_modules/.bin/prisma migrate deploy --schema ../../packages/database/prisma/schema.prisma && node ../../packages/database/dist/prisma/seed.js && node dist/server.js"
