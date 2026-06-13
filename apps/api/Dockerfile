@@ -41,4 +41,4 @@ WORKDIR /app/apps/api
 
 EXPOSE 4000
 
-CMD ["sh", "-c", "prisma migrate deploy --schema /app/packages/database/prisma/schema.prisma && node /app/packages/database/dist/prisma/seed.js && node dist/server.js"]
+CMD ["sh", "-c", "prisma migrate deploy --schema /app/packages/database/prisma/schema.prisma && node /app/packages/database/dist/prisma/seed.js && node --require ./dist/instrument.js dist/server.js"]

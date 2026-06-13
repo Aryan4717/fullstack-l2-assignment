@@ -1,8 +1,6 @@
-// Sentry MUST be initialised before any other imports so it can instrument
-// the Node.js runtime, patching http, Express, and Prisma automatically.
-import { initSentry } from './lib/sentry.client';
-initSentry();
-
+// Sentry is initialised via --require ./instrument.ts (see package.json dev
+// script and Dockerfile CMD) so it patches Node.js/Express/Prisma before
+// any modules load. Do not import sentry.client here.
 import './config/env'; // Validate env variables before anything else
 import { createApp } from './app';
 import { env } from './config/env';
