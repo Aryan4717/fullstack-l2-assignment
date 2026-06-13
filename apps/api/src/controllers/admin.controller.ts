@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import type { ISubmissionRepository } from '../interfaces/repositories/ISubmissionRepository';
 import { ContentType } from '@repo/database';
 import { ResponseFactory } from '../utils/response.factory';
+import { getAuditService, AuditAction } from '../services/audit.service';
 
 const SEED_SUBMISSIONS = [
   { title: 'The Future of Renewable Energy', body: 'Solar and wind power are transforming energy markets globally. Costs have fallen by 90% over the past decade...', authorName: 'Alex Green', type: ContentType.ARTICLE },
@@ -29,11 +30,21 @@ const SEED_SUBMISSIONS = [
 export class AdminController {
   constructor(private readonly submissionRepo: ISubmissionRepository) {}
 
-  seed = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  seed = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const created = await Promise.all(
         SEED_SUBMISSIONS.map((s) => this.submissionRepo.create(s))
       );
+
+      getAuditService().log({
+        userId: req.user!.id,
+        userEmail: req.user!.email,
+        userRole: req.user!.role,
+        action: AuditAction.ADMIN_SEED,
+        success: true,
+        newValues: { count: created.length },
+        req,
+      });
 
       const { status, body } = ResponseFactory.created(
         { count: created.length },

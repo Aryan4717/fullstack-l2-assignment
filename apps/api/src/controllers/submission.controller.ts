@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { ISubmissionService } from '../interfaces/services/ISubmissionService';
 import { ResponseFactory } from '../utils/response.factory';
+import { getAuditService, AuditAction } from '../services/audit.service';
 
 export class SubmissionController {
   constructor(private readonly submissionService: ISubmissionService) {}
@@ -42,6 +43,19 @@ export class SubmissionController {
   create = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const submission = await this.submissionService.createSubmission(req.body);
+
+      getAuditService().log({
+        userId: req.user!.id,
+        userEmail: req.user!.email,
+        userRole: req.user!.role,
+        action: AuditAction.SUBMISSION_CREATED,
+        entityType: 'submission',
+        entityId: submission.id,
+        newValues: { title: submission.title, type: submission.type, authorName: submission.authorName },
+        success: true,
+        req,
+      });
+
       const { status, body } = ResponseFactory.created(submission, 'Submission created');
       res.status(status).json(body);
     } catch (err) {
@@ -54,6 +68,20 @@ export class SubmissionController {
       const id = req.params['id'] as string;
       const moderatorId = req.user!.id;
       const submission = await this.submissionService.updateStatus(id, req.body, moderatorId);
+
+      getAuditService().log({
+        userId: req.user!.id,
+        userEmail: req.user!.email,
+        userRole: req.user!.role,
+        action: AuditAction.SUBMISSION_STATUS_CHANGED,
+        entityType: 'submission',
+        entityId: id,
+        oldValues: { status: 'PENDING' },
+        newValues: { status: (req.body as { status: string }).status, reason: (req.body as { reason?: string }).reason },
+        success: true,
+        req,
+      });
+
       const { status, body } = ResponseFactory.success(submission, 'Status updated');
       res.status(status).json(body);
     } catch (err) {

@@ -3,6 +3,7 @@ import { verifyAccessToken } from '../utils/jwt.util';
 import { UnauthorizedError } from '../errors';
 import { ResponseFactory } from '../utils/response.factory';
 import { Sentry } from '../lib/sentry.client';
+import { getAuditService, AuditAction } from '../services/audit.service';
 
 declare global {
   namespace Express {
@@ -32,6 +33,12 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
     Sentry.setUser({ id: payload.sub, email: payload.email, role: payload.role });
     next();
   } catch (err) {
+    getAuditService().log({
+      action: AuditAction.AUTH_FAILED,
+      success: false,
+      req,
+      metadata: { reason: err instanceof UnauthorizedError ? err.message : 'Unauthorized' },
+    });
     const { status, body } = ResponseFactory.error(
       err instanceof UnauthorizedError ? err.message : 'Unauthorized',
       401
