@@ -7,6 +7,7 @@ import submissionRoutes from './routes/submission.routes';
 import analysisRoutes from './routes/analysis.routes';
 import adminRoutes from './routes/admin.routes';
 import statsRoutes from './routes/stats.routes';
+import sentryTestRoutes from './routes/sentry-test.routes'; // TEMPORARY — remove after verification
 import { errorHandler } from './middleware/error-handler';
 import { ResponseFactory } from './utils/response.factory';
 import { AppError } from './errors';
@@ -42,6 +43,7 @@ export function createApp(): express.Application {
   app.use('/api/analyse', analysisRoutes);
   app.use('/api/admin', adminRoutes);
   app.use('/api/stats', statsRoutes);
+  app.use('/sentry-test', sentryTestRoutes); // TEMPORARY — remove after verification
 
   // ─── 404 handler ────────────────────────────────────────────────────────────
   app.use((_req: Request, res: Response) => {
