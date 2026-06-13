@@ -1,9 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SubmissionService } from '../../src/services/submission.service';
 import type { ISubmissionRepository } from '../../src/interfaces/repositories/ISubmissionRepository';
-import type { IModerationLogRepository } from '../../src/interfaces/repositories/IModerationLogRepository';
 import { ContentType, SubmissionStatus } from '@repo/database';
 import { InvalidStatusTransitionError, NotFoundError } from '../../src/errors';
+
+// Mock the prisma singleton so $transaction can be controlled in unit tests
+vi.mock('@repo/database', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@repo/database')>();
+  return {
+    ...actual,
+    prisma: {
+      submission: { update: vi.fn() },
+      moderationLog: { create: vi.fn() },
+      $transaction: vi.fn(),
+    },
+  };
+});
+
+import { prisma } from '@repo/database';
 
 const makeSubmission = (status: SubmissionStatus = SubmissionStatus.PENDING) => ({
   id: 'sub-1',
@@ -17,10 +31,10 @@ const makeSubmission = (status: SubmissionStatus = SubmissionStatus.PENDING) => 
 
 describe('SubmissionService', () => {
   let submissionRepo: ISubmissionRepository;
-  let logRepo: IModerationLogRepository;
   let service: SubmissionService;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     submissionRepo = {
       list: vi.fn(),
       findById: vi.fn(),
@@ -28,8 +42,7 @@ describe('SubmissionService', () => {
       updateStatus: vi.fn(),
       getStats: vi.fn(),
     };
-    logRepo = { create: vi.fn(), findBySubmissionId: vi.fn() };
-    service = new SubmissionService(submissionRepo, logRepo);
+    service = new SubmissionService(submissionRepo);
   });
 
   it('creates a submission with PENDING status', async () => {
@@ -47,19 +60,16 @@ describe('SubmissionService', () => {
     expect(submissionRepo.create).toHaveBeenCalledOnce();
   });
 
-  it('transitions PENDING → APPROVED and logs the action', async () => {
+  it('transitions PENDING → APPROVED atomically via $transaction', async () => {
     const pending = makeSubmission(SubmissionStatus.PENDING);
     const approved = makeSubmission(SubmissionStatus.APPROVED);
     vi.mocked(submissionRepo.findById).mockResolvedValue(pending);
-    vi.mocked(submissionRepo.updateStatus).mockResolvedValue(approved);
-    vi.mocked(logRepo.create).mockResolvedValue({} as never);
+    vi.mocked(prisma.$transaction as ReturnType<typeof vi.fn>).mockResolvedValue([approved, {}]);
 
-    await service.updateStatus('sub-1', { status: SubmissionStatus.APPROVED }, 'mod-1');
+    const result = await service.updateStatus('sub-1', { status: SubmissionStatus.APPROVED }, 'mod-1');
 
-    expect(submissionRepo.updateStatus).toHaveBeenCalledWith('sub-1', SubmissionStatus.APPROVED);
-    expect(logRepo.create).toHaveBeenCalledWith(
-      expect.objectContaining({ submissionId: 'sub-1', moderatorId: 'mod-1' })
-    );
+    expect(prisma.$transaction).toHaveBeenCalledOnce();
+    expect(result.status).toBe(SubmissionStatus.APPROVED);
   });
 
   it('throws InvalidStatusTransitionError when updating a non-PENDING submission', async () => {

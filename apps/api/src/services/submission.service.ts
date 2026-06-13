@@ -1,14 +1,13 @@
+import { prisma } from '@repo/database';
 import type { Submission } from '@repo/database';
 import { SubmissionStatus } from '@repo/database';
 import type { ISubmissionService, UpdateStatusDto } from '../interfaces/services/ISubmissionService';
 import type { ISubmissionRepository, SubmissionFilters, CreateSubmissionDto } from '../interfaces/repositories/ISubmissionRepository';
-import type { IModerationLogRepository } from '../interfaces/repositories/IModerationLogRepository';
 import { NotFoundError, InvalidStatusTransitionError } from '../errors';
 
 export class SubmissionService implements ISubmissionService {
   constructor(
     private readonly submissionRepo: ISubmissionRepository,
-    private readonly moderationLogRepo: IModerationLogRepository
   ) {}
 
   async getSubmissions(filters: SubmissionFilters): Promise<{ data: Submission[]; total: number }> {
@@ -35,16 +34,15 @@ export class SubmissionService implements ISubmissionService {
       );
     }
 
-    const updated = await this.submissionRepo.updateStatus(id, dto.status);
+    // Atomic: both the status update and the moderation log must succeed or both fail.
+    const [updated] = await prisma.$transaction([
+      prisma.submission.update({ where: { id }, data: { status: dto.status } }),
+      prisma.moderationLog.create({
+        data: { submissionId: id, moderatorId, action: dto.status, reason: dto.reason },
+      }),
+    ]);
 
-    await this.moderationLogRepo.create({
-      submissionId: id,
-      moderatorId,
-      action: dto.status,
-      reason: dto.reason,
-    });
-
-    return updated;
+    return updated as Submission;
   }
 
   async getStats(): Promise<{ total: number; pending: number; approved: number; rejected: number }> {

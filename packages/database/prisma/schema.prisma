@@ -38,6 +38,19 @@ enum Recommendation {
   REJECT
 }
 
+enum AuditAction {
+  LOGIN
+  LOGIN_FAILED
+  LOGOUT
+  AUTH_FAILED
+  UNAUTHORIZED_ACCESS
+  SUBMISSION_CREATED
+  SUBMISSION_STATUS_CHANGED
+  AI_ANALYSIS_TRIGGERED
+  AI_ANALYSIS_FAILED
+  ADMIN_SEED
+}
+
 // ─── Models ───────────────────────────────────────────────────────────────────
 
 model User {
@@ -47,6 +60,7 @@ model User {
   role         Role
   createdAt    DateTime        @default(now())
   logs         ModerationLog[]
+  auditLogs    AuditLog[]
 
   @@index([email])
   @@map("users")
@@ -96,4 +110,29 @@ model AIAnalysis {
   submission     Submission     @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
   @@map("ai_analyses")
+}
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  userId     String?
+  userEmail  String?
+  userRole   String?
+  action     AuditAction
+  entityType String?
+  entityId   String?
+  oldValues  Json?
+  newValues  Json?
+  ipAddress  String?
+  userAgent  String?
+  success    Boolean     @default(true)
+  metadata   Json?
+  createdAt  DateTime    @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
 }
