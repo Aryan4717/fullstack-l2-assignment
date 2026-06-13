@@ -35,17 +35,19 @@ export default async function SubmissionDetailPage({ params }: PageProps) {
 
       {/* ─── Submission details ─────────────────────────────────────────── */}
       <div className="card space-y-4">
-        <div className="flex items-start justify-between gap-4">
-          <h1 className="text-xl font-bold text-gray-900">{submission.title}</h1>
-          <div className="flex shrink-0 gap-2">
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="min-w-0 flex-1 break-words text-xl font-bold text-gray-900">
+            {submission.title}
+          </h1>
+          <div className="flex shrink-0 flex-wrap items-start gap-2">
             <ContentTypeBadge type={submission.type} />
             <StatusBadge status={submission.status} />
           </div>
         </div>
 
-        <div className="flex gap-4 text-sm text-gray-500">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
           <span>By <span className="font-medium text-gray-700">{submission.authorName}</span></span>
-          <span>•</span>
+          <span className="hidden sm:inline">•</span>
           <span>{new Date(submission.submittedAt).toLocaleString()}</span>
         </div>
 
@@ -73,10 +75,10 @@ export default async function SubmissionDetailPage({ params }: PageProps) {
           <h2 className="mb-4 text-lg font-semibold text-gray-900">Audit Log</h2>
           <ul className="space-y-2">
             {submission.logs.map((log) => (
-              <li key={log.id} className="flex items-center gap-3 text-sm text-gray-600">
+              <li key={log.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600">
                 <StatusBadge status={log.action} />
-                <span>{new Date(log.createdAt).toLocaleString()}</span>
-                {log.reason && <span className="italic">— {log.reason}</span>}
+                <span className="shrink-0">{new Date(log.createdAt).toLocaleString()}</span>
+                {log.reason && <span className="italic text-gray-500">— {log.reason}</span>}
               </li>
             ))}
           </ul>

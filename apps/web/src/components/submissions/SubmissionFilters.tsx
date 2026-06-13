@@ -26,7 +26,7 @@ export function SubmissionFilters() {
   );
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
+    <div className="flex flex-wrap items-center gap-2 sm:gap-3">
       {isPending && (
         <span className="text-xs text-gray-400">Updating…</span>
       )}
@@ -35,7 +35,7 @@ export function SubmissionFilters() {
       <select
         value={searchParams.get('status') ?? ''}
         onChange={(e) => updateFilter('status', e.target.value)}
-        className="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        className="min-h-[40px] rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         aria-label="Filter by status"
       >
         <option value="">All Statuses</option>
@@ -48,7 +48,7 @@ export function SubmissionFilters() {
       <select
         value={searchParams.get('type') ?? ''}
         onChange={(e) => updateFilter('type', e.target.value)}
-        className="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        className="min-h-[40px] rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         aria-label="Filter by type"
       >
         <option value="">All Types</option>
@@ -56,7 +56,7 @@ export function SubmissionFilters() {
         <option value="COMMENT">Comment</option>
       </select>
 
-      {/* Title search */}
+      {/* Title search — full-width on mobile, fixed on sm+ */}
       <input
         type="search"
         placeholder="Search by title…"
@@ -66,7 +66,7 @@ export function SubmissionFilters() {
             updateFilter('search', (e.target as HTMLInputElement).value);
           }
         }}
-        className="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 w-48"
+        className="min-h-[40px] w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 sm:w-48"
         aria-label="Search submissions"
       />
 
@@ -76,7 +76,7 @@ export function SubmissionFilters() {
           onClick={() => {
             startTransition(() => router.push(pathname));
           }}
-          className="text-xs text-red-500 hover:underline"
+          className="min-h-[40px] px-2 text-xs text-red-500 hover:underline"
         >
           Clear filters
         </button>
