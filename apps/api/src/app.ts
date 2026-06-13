@@ -9,6 +9,8 @@ import adminRoutes from './routes/admin.routes';
 import statsRoutes from './routes/stats.routes';
 import { errorHandler } from './middleware/error-handler';
 import { ResponseFactory } from './utils/response.factory';
+import { AppError } from './errors';
+import { Sentry } from './lib/sentry.client';
 
 export function createApp(): express.Application {
   const app = express();
@@ -45,6 +47,17 @@ export function createApp(): express.Application {
   app.use((_req: Request, res: Response) => {
     const { status, body } = ResponseFactory.error('Route not found', 404);
     res.status(status).json(body);
+  });
+
+  // ─── Sentry error handler ───────────────────────────────────────────────────
+  // v10 API: takes the app object directly, not via app.use(). Must be after
+  // routes, before our custom error handler.
+  Sentry.setupExpressErrorHandler(app, {
+    shouldHandleError(error) {
+      // Skip known 4xx AppErrors (auth, validation, not-found) — noise, not bugs.
+      if (error instanceof AppError && error.statusCode < 500) return false;
+      return true;
+    },
   });
 
   // ─── Global error handler ───────────────────────────────────────────────────

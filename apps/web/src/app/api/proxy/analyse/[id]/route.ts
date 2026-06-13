@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
@@ -12,10 +13,15 @@ export async function POST(
 
   const { id } = await params;
 
-  const res = await fetch(`${API_URL}/api/analyse/${id}`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  const data = await res.json();
-  return NextResponse.json(data, { status: res.status });
+  try {
+    const res = await fetch(`${API_URL}/api/analyse/${id}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    return NextResponse.json(data, { status: res.status });
+  } catch (err) {
+    Sentry.captureException(err, { tags: { route: 'proxy/analyse', submissionId: id } });
+    return NextResponse.json({ success: false, message: 'Internal server error' }, { status: 500 });
+  }
 }

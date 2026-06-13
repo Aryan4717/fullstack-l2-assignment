@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import * as Sentry from '@sentry/nextjs';
 import { login } from '@/lib/api';
 
 export function LoginForm() {
@@ -21,6 +22,7 @@ export function LoginForm() {
       router.push('/dashboard');
       router.refresh();
     } catch (err) {
+      Sentry.captureException(err, { tags: { feature: 'auth' } });
       setError(err instanceof Error ? err.message : 'Login failed. Please try again.');
     } finally {
       setLoading(false);

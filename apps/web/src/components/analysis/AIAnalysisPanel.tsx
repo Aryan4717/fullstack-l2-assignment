@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import * as Sentry from '@sentry/nextjs';
 import type { AIAnalysis } from '@/types';
 import { triggerAnalysis } from '@/lib/api';
 
@@ -35,6 +36,7 @@ export function AIAnalysisPanel({ submissionId, analysis: initialAnalysis }: AIA
       setAnalysis(result);
       startTransition(() => router.refresh());
     } catch (err) {
+      Sentry.captureException(err, { tags: { feature: 'ai-analysis', submissionId } });
       setError(err instanceof Error ? err.message : 'Analysis failed');
     }
   };
