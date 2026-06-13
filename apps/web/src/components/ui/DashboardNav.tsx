@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import * as Sentry from '@sentry/nextjs';
 import { logout, seedSubmissions } from '@/lib/api';
 import { useState } from 'react';
 
@@ -33,7 +34,8 @@ export function DashboardNav({ role, email }: DashboardNavProps) {
       await seedSubmissions();
       setSeedMsg('20 test submissions created!');
       router.refresh();
-    } catch {
+    } catch (err) {
+      Sentry.captureException(err, { tags: { feature: 'admin-seed' } });
       setSeedMsg('Seed failed.');
     } finally {
       setSeeding(false);

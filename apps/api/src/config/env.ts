@@ -18,6 +18,9 @@ const envSchema = z.object({
   LANGFUSE_PUBLIC_KEY: z.string().optional(),
   LANGFUSE_SECRET_KEY: z.string().optional(),
   LANGFUSE_HOST: z.string().default('https://cloud.langfuse.com'),
+  SENTRY_DSN: z.string().url().optional(),
+  SENTRY_ENVIRONMENT: z.string().default('development'),
+  SENTRY_RELEASE: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

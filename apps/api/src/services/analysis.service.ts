@@ -7,6 +7,7 @@ import type { ISubmissionRepository } from '../interfaces/repositories/ISubmissi
 import { NotFoundError } from '../errors';
 import { MODERATION_PROMPT } from '../constants/prompts';
 import { getLangfuse } from '../lib/langfuse.client';
+import { Sentry } from '../lib/sentry.client';
 import { env } from '../config/env';
 
 export class AnalysisService implements IAnalysisService {
@@ -66,6 +67,13 @@ export class AnalysisService implements IAnalysisService {
       });
     } catch (err) {
       console.error('AI analysis failed, storing fallback:', err);
+
+      // Capture before the fallback path swallows the error — Sentry needs the
+      // original exception, not the fallback record.
+      Sentry.captureException(err, {
+        tags: { feature: 'ai-analysis', submissionId },
+        level: 'error',
+      });
 
       trace?.update({ output: 'provider-error', metadata: { error: true } });
       await lf?.flushAsync();

@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../utils/jwt.util';
 import { UnauthorizedError } from '../errors';
 import { ResponseFactory } from '../utils/response.factory';
+import { Sentry } from '../lib/sentry.client';
 
 declare global {
   namespace Express {
@@ -28,6 +29,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
 
     const payload = verifyAccessToken(token);
     req.user = { id: payload.sub, email: payload.email, role: payload.role };
+    Sentry.setUser({ id: payload.sub, email: payload.email, role: payload.role });
     next();
   } catch (err) {
     const { status, body } = ResponseFactory.error(

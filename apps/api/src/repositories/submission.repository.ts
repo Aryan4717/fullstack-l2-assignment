@@ -1,6 +1,7 @@
 import type { Submission, SubmissionStatus, Prisma } from '@repo/database';
 import { prisma } from '@repo/database';
 import type { ISubmissionRepository, SubmissionFilters, CreateSubmissionDto } from '../interfaces/repositories/ISubmissionRepository';
+import { Sentry } from '../lib/sentry.client';
 
 export class SubmissionRepository implements ISubmissionRepository {
   async list(filters: SubmissionFilters): Promise<{ data: Submission[]; total: number }> {
@@ -15,18 +16,19 @@ export class SubmissionRepository implements ISubmissionRepository {
       }),
     };
 
-    const [data, total] = await Promise.all([
-      prisma.submission.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { submittedAt: 'desc' },
-        include: { analysis: true },
-      }),
-      prisma.submission.count({ where }),
-    ]);
-
-    return { data, total };
+    return Sentry.startSpan({ name: 'db.submission.list', op: 'db.query' }, async () => {
+      const [data, total] = await Promise.all([
+        prisma.submission.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { submittedAt: 'desc' },
+          include: { analysis: true },
+        }),
+        prisma.submission.count({ where }),
+      ]);
+      return { data, total };
+    });
   }
 
   async findById(id: string): Promise<Submission | null> {

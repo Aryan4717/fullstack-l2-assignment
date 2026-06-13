@@ -17,7 +17,7 @@ A production-grade full-stack web application for moderating user-submitted arti
 | Backend | Node.js, Express.js, TypeScript |
 | Database | PostgreSQL 16, Prisma ORM |
 | AI | OpenAI GPT-4o-mini (Chat Completions) |
-| Observability | Langfuse (LLM tracing, scoring, monitoring) |
+| Observability | Langfuse (LLM tracing), Sentry (error monitoring, performance, session replay) |
 | Infrastructure | Docker, Docker Compose, Railway |
 | Testing | Vitest, Supertest |
 
@@ -147,6 +147,30 @@ Business logic never touches Prisma directly. The `SubmissionService` holds the 
 
 ### AI Strategy Pattern
 `IAnalysisProvider` is an interface. `OpenAIProvider` is one implementation. If the project needs to swap to a different LLM (Claude, Gemini), only the provider class changes — `AnalysisService` is untouched. This satisfies OCP (Open/Closed Principle).
+
+### Sentry — Application Error Monitoring & Performance (Bonus)
+Sentry is integrated across the entire monorepo (Express API + Next.js frontend). This was not required by the assignment spec — it was added to demonstrate production-grade application observability.
+
+**Why Sentry?**
+In production, errors are invisible without an error monitoring tool. Langfuse tells you what the AI did; Sentry tells you what the application did — unhandled exceptions, slow database queries, front-end crashes, and full session replays showing exactly what a user did before something broke.
+
+**What is monitored:**
+
+| Signal | Detail |
+|--------|--------|
+| **Error monitoring** | All unhandled Express exceptions and React component errors captured with full stack traces |
+| **Performance tracing** | Express route transactions with Prisma DB spans (`db.submission.list`, `db.analysis.*`) |
+| **Session replay** | 10% of browser sessions recorded; 100% of sessions that hit a JavaScript error |
+| **User context** | `Sentry.setUser({ id, email, role })` set on every authenticated request |
+| **Sensitive data scrubbing** | `beforeSend` strips `request.cookies` and `Authorization` headers before any event is shipped |
+| **Smart error filtering** | 4xx `AppError`s (auth, validation) are breadcrumbed only — 5xx and unexpected errors are fully captured |
+| **Error boundaries** | `global-error.tsx` (root) and `dashboard/error.tsx` catch React render errors |
+
+**Graceful degradation:** If `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` are not set, Sentry is never initialised and the app works normally without any Sentry credentials.
+
+**Architecture:** The API Sentry client is a singleton in `apps/api/src/lib/sentry.client.ts`, mirroring the Langfuse singleton pattern exactly. `initSentry()` is called as the very first import in `server.ts` so Node.js instrumentation patches HTTP, Express, and Prisma automatically.
+
+---
 
 ### Langfuse — LLM Observability (Bonus)
 Langfuse is integrated as an observability layer over every AI moderation call. This was not required by the assignment spec — it was added to demonstrate production-grade LLM engineering awareness.
