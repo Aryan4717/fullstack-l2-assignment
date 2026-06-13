@@ -25,39 +25,70 @@ export function Pagination({ pagination }: PaginationProps) {
   const from = (page - 1) * limit + 1;
   const to = Math.min(page * limit, total);
 
+  // Limit page buttons: show at most 5 numbered pages to prevent overflow on mobile.
+  const maxButtons = 5;
+  const half = Math.floor(maxButtons / 2);
+  const startPage = Math.max(1, Math.min(page - half, totalPages - maxButtons + 1));
+  const endPage = Math.min(totalPages, startPage + maxButtons - 1);
+  const pages = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
+
   return (
-    <div className="flex items-center justify-between text-sm text-gray-600">
-      <span>
+    <div className="flex flex-col gap-3 text-sm text-gray-600 sm:flex-row sm:items-center sm:justify-between">
+      <span className="text-center sm:text-left">
         Showing {from}–{to} of {total} submissions
       </span>
-      <div className="flex items-center gap-1">
+
+      <div className="flex flex-wrap items-center justify-center gap-1 sm:justify-end">
         <button
           onClick={() => goToPage(page - 1)}
           disabled={page <= 1}
-          className="rounded-md border border-gray-300 px-3 py-1 text-xs disabled:opacity-40 hover:bg-gray-100 transition-colors"
+          className="min-h-[36px] rounded-md border border-gray-300 px-3 py-1 text-xs disabled:opacity-40 hover:bg-gray-100 transition-colors"
         >
           Previous
         </button>
-        {Array.from({ length: Math.min(totalPages, 7) }).map((_, i) => {
-          const p = i + 1;
-          return (
+
+        {startPage > 1 && (
+          <>
             <button
-              key={p}
-              onClick={() => goToPage(p)}
-              className={`rounded-md border px-3 py-1 text-xs transition-colors ${
-                p === page
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-gray-300 hover:bg-gray-100'
-              }`}
+              onClick={() => goToPage(1)}
+              className="min-h-[36px] rounded-md border border-gray-300 px-3 py-1 text-xs hover:bg-gray-100 transition-colors"
             >
-              {p}
+              1
             </button>
-          );
-        })}
+            {startPage > 2 && <span className="px-1 text-gray-400">…</span>}
+          </>
+        )}
+
+        {pages.map((p) => (
+          <button
+            key={p}
+            onClick={() => goToPage(p)}
+            className={`min-h-[36px] rounded-md border px-3 py-1 text-xs transition-colors ${
+              p === page
+                ? 'border-blue-500 bg-blue-50 text-blue-700'
+                : 'border-gray-300 hover:bg-gray-100'
+            }`}
+          >
+            {p}
+          </button>
+        ))}
+
+        {endPage < totalPages && (
+          <>
+            {endPage < totalPages - 1 && <span className="px-1 text-gray-400">…</span>}
+            <button
+              onClick={() => goToPage(totalPages)}
+              className="min-h-[36px] rounded-md border border-gray-300 px-3 py-1 text-xs hover:bg-gray-100 transition-colors"
+            >
+              {totalPages}
+            </button>
+          </>
+        )}
+
         <button
           onClick={() => goToPage(page + 1)}
           disabled={page >= totalPages}
-          className="rounded-md border border-gray-300 px-3 py-1 text-xs disabled:opacity-40 hover:bg-gray-100 transition-colors"
+          className="min-h-[36px] rounded-md border border-gray-300 px-3 py-1 text-xs disabled:opacity-40 hover:bg-gray-100 transition-colors"
         >
           Next
         </button>

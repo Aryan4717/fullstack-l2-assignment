@@ -43,12 +43,12 @@ export function AIAnalysisPanel({ submissionId, analysis: initialAnalysis }: AIA
 
   return (
     <div className="card space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold text-gray-900">AI Analysis</h2>
         <button
           onClick={handleTrigger}
           disabled={isPending}
-          className="btn-secondary text-xs"
+          className="btn-secondary !min-h-[36px] !py-1.5 text-xs"
         >
           {isPending ? 'Analysing…' : analysis ? 'Re-run Analysis' : 'Trigger AI Analysis'}
         </button>

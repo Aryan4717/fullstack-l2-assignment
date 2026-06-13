@@ -4,8 +4,7 @@ A production-grade full-stack web application for moderating user-submitted arti
 
 ## Live URL
 
-> **[https://your-app.railway.app](https://your-app.railway.app)**  
-> *(Update with actual deployment URL after deploying to Railway)*
+> repoweb-production-4b94.up.railway.app
 
 ---
 
@@ -34,7 +33,7 @@ A production-grade full-stack web application for moderating user-submitted arti
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-username/fullstack-l2-assignment.git
+git clone https://github.com/Aryan4717/fullstack-l2-assignment
 cd fullstack-l2-assignment
 
 # 2. Configure environment
