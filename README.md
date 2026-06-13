@@ -4,7 +4,7 @@ A production-grade full-stack web application for moderating user-submitted arti
 
 ## Live URL
 
-> repoweb-production-4b94.up.railway.app
+[https://repoweb-production-4b94.up.railway.app](https://repoweb-production-4b94.up.railway.app)
 
 ---
 
