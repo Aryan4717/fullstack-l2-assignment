@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import * as Sentry from '@sentry/nextjs';
 import { updateSubmissionStatus } from '@/lib/api';
 
 interface ModerationActionsProps {
@@ -22,6 +23,7 @@ export function ModerationActions({ submissionId }: ModerationActionsProps) {
         router.refresh();
       });
     } catch (err) {
+      Sentry.captureException(err, { tags: { feature: 'moderation', submissionId, action: status } });
       setError(err instanceof Error ? err.message : 'Action failed');
     }
   };
