@@ -6,6 +6,20 @@ A production-grade full-stack web application for moderating user-submitted arti
 
 [https://repoweb-production-4b94.up.railway.app](https://repoweb-production-4b94.up.railway.app)
 
+## Services
+
+![Services](assets/services.png)
+
+The platform runs as three isolated containers on Railway, each with a single responsibility and a hard boundary between them.
+
+**Postgres** is the source of truth. PostgreSQL 16 backed by a persistent volume so data survives deploys and restarts. The schema is managed entirely through Prisma migrations — the API container runs `prisma migrate deploy` on every startup, which means schema and application code are always in lockstep with zero manual intervention. Five tables: `users`, `submissions`, `ai_analyses`, `moderation_logs`, and `audit_logs`. No direct external access — only the API talks to it.
+
+**@repo/api** owns all business logic and is the only service that touches the database. Express.js on port 4000 with a strict layered architecture: routes → controllers → services → repositories → Prisma. Authentication is JWT-based with access tokens (15 min) and refresh tokens (7 days), both stored in `httpOnly` cookies — inaccessible to JavaScript, eliminating the XSS attack surface entirely. Status transitions are wrapped in `prisma.$transaction` so a submission update and its audit log entry are atomic — either both commit or neither does. The AI analysis layer calls OpenAI, caches the result immediately, and has a graceful fallback that stores `errorFlag: true` rather than surfacing a 500 to the user. Every significant action — login, failed auth, 403, submission create, status change, AI trigger, admin seed — is written to the `audit_logs` table with IP address, user-agent, and timestamp.
+
+**@repo/web** is a pure presentation layer — it owns no state and holds no secrets. Next.js 14 App Router with server components for data fetching and client components only where interactivity is required. The JWT lives in an `httpOnly` cookie the browser cannot read, so client-side code cannot attach it to outbound requests. The solution: all mutation requests go through Next.js server-side route handlers (`/api/proxy/*`) which read the cookie server-side and forward it as a `Bearer` token to the API. The browser never sees the token. Data flows one way — server components fetch on the server, render HTML, ship it to the client.
+
+
+
 ---
 
 ## Tech Stack
@@ -218,3 +232,153 @@ I used Claude Code (claude.ai/code) extensively throughout this assignment. For 
 Specific speed improvements: generating the Prisma schema boilerplate (enums, relations, indexes) took minutes instead of half an hour; Vitest mock setup for Prisma is notoriously verbose and the AI produced a correct mock structure on the first attempt.
 
 One example where the suggestion was wrong: Claude initially suggested storing the access token in `localStorage` in the frontend, which is a well-known XSS vulnerability. I caught this immediately, rejected the suggestion, and switched to `httpOnly` cookies — which is the correct, secure approach. This reinforced that AI suggestions for security-sensitive code must always be critically reviewed rather than applied blindly. The AI is a speed multiplier, not a replacement for security judgment.
+
+
+
+
+
+---
+
+## Database Schema
+
+> All 5 tables, columns, types, and relationships — derived directly from `packages/database/prisma/schema.prisma`.
+
+```mermaid
+erDiagram
+    users {
+        string id PK
+        string email UK
+        string passwordHash
+        enum role "ADMIN | MODERATOR"
+        datetime createdAt
+    }
+
+    submissions {
+        string id PK
+        string title
+        string body
+        string authorName
+        enum type "ARTICLE | COMMENT"
+        enum status "PENDING | APPROVED | REJECTED"
+        datetime submittedAt
+    }
+
+    moderation_logs {
+        string id PK
+        string submissionId FK
+        string moderatorId FK
+        enum action "APPROVED | REJECTED"
+        string reason
+        datetime createdAt
+    }
+
+    ai_analyses {
+        string id PK
+        string submissionId FK "UNIQUE"
+        float toxicityScore
+        enum sentiment "POSITIVE | NEUTRAL | NEGATIVE"
+        string summary
+        enum recommendation "APPROVE | REVIEW | REJECT"
+        string rawPrompt
+        boolean errorFlag
+        datetime createdAt
+    }
+
+    audit_logs {
+        string id PK
+        string userId FK "nullable"
+        string userEmail
+        string userRole
+        enum action "LOGIN | LOGIN_FAILED | LOGOUT | AUTH_FAILED | UNAUTHORIZED_ACCESS | SUBMISSION_CREATED | SUBMISSION_STATUS_CHANGED | AI_ANALYSIS_TRIGGERED | AI_ANALYSIS_FAILED | ADMIN_SEED"
+        string entityType
+        string entityId
+        json oldValues
+        json newValues
+        string ipAddress
+        string userAgent
+        boolean success
+        json metadata
+        datetime createdAt
+    }
+
+    users ||--o{ moderation_logs : "moderates"
+    users ||--o{ audit_logs : "tracked in"
+    submissions ||--o{ moderation_logs : "has logs"
+    submissions ||--o| ai_analyses : "analysed by"
+```
+
+### Relationships & Constraints
+
+| Relationship | Cardinality | On Delete |
+|---|---|---|
+| `users` → `moderation_logs` | One-to-Many | **RESTRICT** — user cannot be deleted while moderation logs exist |
+| `users` → `audit_logs` | One-to-Many | **SET NULL** — audit trail is retained even after user deletion |
+| `submissions` → `moderation_logs` | One-to-Many | **CASCADE** — logs are deleted when submission is deleted |
+| `submissions` → `ai_analyses` | One-to-One (optional) | **CASCADE** — analysis is deleted when submission is deleted |
+
+---
+
+## Data Flow
+
+How data moves through the system for each core operation.
+
+### 1. Login
+
+```mermaid
+flowchart TD
+    A[POST /api/auth/login] --> B[READ users\nWHERE email = ?]
+    B --> C{Password valid?}
+    C -- No --> D[WRITE audit_logs\naction = LOGIN_FAILED\nsuccess = false]
+    C -- Yes --> E[Sign JWT in memory\naccess 15m · refresh 7d]
+    E --> F[Set httpOnly cookies\non response]
+    F --> G[WRITE audit_logs\naction = LOGIN\nsuccess = true]
+```
+
+### 2. Create Submission
+
+```mermaid
+flowchart TD
+    A[POST /api/submissions] --> B[authenticate middleware\nverify JWT from cookie]
+    B --> C[WRITE submissions\nstatus = PENDING by default]
+    C --> D[WRITE audit_logs\naction = SUBMISSION_CREATED\nnewValues = title · type · authorName]
+```
+
+### 3. Trigger AI Analysis
+
+```mermaid
+flowchart TD
+    A[POST /api/analyse/:id] --> B[READ ai_analyses\nWHERE submissionId = ?]
+    B --> C{Already cached?}
+    C -- Yes --> D[Return cached result\nno re-analysis]
+    C -- No --> E[READ submissions\nWHERE id = ?]
+    E --> F[Call OpenAI API\ngpt-4o-mini]
+    F --> G{Provider success?}
+    G -- Yes --> H[WRITE ai_analyses\nerrorFlag = false\nreal scores]
+    G -- No --> I[WRITE ai_analyses\nerrorFlag = true\nfallback values]
+    H --> J[WRITE audit_logs\naction = AI_ANALYSIS_TRIGGERED]
+    I --> K[WRITE audit_logs\naction = AI_ANALYSIS_FAILED]
+```
+
+### 4. Update Submission Status
+
+```mermaid
+flowchart TD
+    A[PATCH /api/submissions/:id/status] --> B[READ submissions\nWHERE id = ?]
+    B --> C{status == PENDING?}
+    C -- No --> D[Throw\nInvalidStatusTransitionError]
+    C -- Yes --> E[prisma.$transaction\nboth or neither]
+    E --> F[UPDATE submissions\nSET status = APPROVED / REJECTED]
+    E --> G[WRITE moderation_logs\nsubmissionId · moderatorId · action · reason]
+    F & G --> H[WRITE audit_logs\naction = SUBMISSION_STATUS_CHANGED\noldValues · newValues]
+```
+
+### 5. Admin Seed
+
+```mermaid
+flowchart TD
+    A[POST /api/admin/seed] --> B[authorize ADMIN role]
+    B --> C[Promise.all — 20 parallel inserts\nWRITE submissions\nstatus = PENDING]
+    C --> D[WRITE audit_logs\naction = ADMIN_SEED\nnewValues = count 20]
+```
+
+---
