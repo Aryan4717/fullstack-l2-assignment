@@ -5,11 +5,11 @@ const prisma = new PrismaClient();
 
 async function main(): Promise<void> {
   if (process.env['NODE_ENV'] === 'production') {
-    console.warn('⚠️  Seed skipped: NODE_ENV=production. Run seed only in development/staging.');
+    console.warn('Seed skipped: NODE_ENV=production. Run seed only in development/staging.');
     return;
   }
 
-  console.log('🌱 Seeding database...');
+  console.log('Seeding database...');
 
   const SALT_ROUNDS = 12;
 
@@ -44,14 +44,14 @@ async function main(): Promise<void> {
     }),
   ]);
 
-  console.log(`✅ Users seeded: ${admin.email}, ${mod1.email}, ${mod2.email}`);
+  console.log(`Users seeded: ${admin.email}, ${mod1.email}, ${mod2.email}`);
 
-  console.log('✅ Seeding complete.');
+  console.log('Seeding complete.');
 }
 
 main()
   .catch((error) => {
-    console.error('❌ Seed failed:', error);
+    console.error('Seed failed:', error);
     process.exit(1);
   })
   .finally(() => prisma.$disconnect());

@@ -22,6 +22,265 @@ The platform runs as three isolated containers on Railway, each with a single re
 
 ---
 
+## Engineering Architecture & Development Standards
+
+### 1. System Architecture Overview
+
+The platform is a **3-tier Turborepo monorepo** with strict package boundaries and unidirectional data flow.
+
+```
+packages/database   →   apps/api   →   apps/web
+(Prisma schema)         (Express)       (Next.js 14)
+```
+
+**Turborepo pipeline** (`turbo.json`):
+- `build` depends on `^build` — database package always compiles before API
+- `test` depends on `^build` — ensures Prisma client is generated before tests run
+- `dev` is persistent with no caching — runs all services in parallel
+
+**Runtime request path:**
+
+```
+Browser
+  → Next.js (server components fetch data server-side)
+  → Express API (JWT verify → role check → controller → service → repository → Prisma)
+  → PostgreSQL
+```
+
+**Key architectural constraint:** JWT tokens live in `httpOnly` cookies — JavaScript cannot read them. This forces all token-bearing requests from client components through Next.js server-side route handlers (`/api/proxy/*`) which read the cookie and forward it as a `Bearer` token. The browser never touches the token directly.
+
+**Cross-cutting concerns (all independent of core business logic):**
+
+| Concern | Tool | Pattern |
+|---|---|---|
+| Error monitoring | Sentry | Singleton init via `initSentry()` in `instrument.ts` |
+| LLM observability | Langfuse | Lazy singleton via `getLangfuse()` |
+| Compliance audit trail | `audit_logs` table | Fire-and-forget via `getAuditService()` singleton |
+
+---
+
+### 2. Design Principles
+
+Every design principle is demonstrated by concrete code in this codebase — not aspirational.
+
+| Principle | Where it appears |
+|---|---|
+| **Single Responsibility (S)** | `AuditService` only writes audit logs. `ResponseFactory` only shapes response envelopes. `jwt.util.ts` only signs and verifies tokens. Each class has exactly one reason to change. |
+| **Open / Closed (O)** | `IAnalysisProvider` interface. Adding Claude or Gemini requires creating one new class — `AnalysisService`, `AnalysisController`, and every test are untouched. |
+| **Liskov Substitution (L)** | `OpenAIProvider` is fully substitutable for any `IAnalysisProvider`. The service never checks which concrete provider it received. |
+| **Interface Segregation (I)** | `IAuditLogRepository` exposes only `create`. `ISubmissionRepository` exposes only what submissions need. No fat interfaces that force unused method implementations. |
+| **Dependency Inversion (D)** | `AnalysisService(provider: IAnalysisProvider, repo: IAnalysisRepository, subRepo: ISubmissionRepository)` — the service depends entirely on abstractions. Concrete classes are wired in route files at the edge. |
+| **DRY** | `ResponseFactory.success / error / created / paginated` — one response envelope used across all 9 endpoints. No inline `res.json({ success: true, ... })` anywhere. |
+| **Separation of Concerns** | Routes (wiring) → Controllers (parse + respond) → Services (business logic) → Repositories (DB) → Prisma. No layer skips. Controllers never touch Prisma. Services never touch `req`/`res`. |
+| **Fail Fast** | `src/config/env.ts` uses Zod to validate all environment variables at process startup. If `JWT_SECRET` is missing or too short, the process exits before accepting any connections. |
+| **Graceful Degradation** | `getLangfuse()` returns `null` if `LANGFUSE_PUBLIC_KEY` is absent. `initSentry()` no-ops if `SENTRY_DSN` is absent. The application runs normally without either observability tool. |
+
+---
+
+### 3. Design Patterns
+
+| Pattern | File(s) | Purpose |
+|---|---|---|
+| **Repository** | `src/repositories/` + `src/interfaces/repositories/I*.ts` | All Prisma queries sit behind interfaces. Services never import Prisma directly. Enables unit testing with mocks instead of a real database. |
+| **Strategy** | `src/interfaces/providers/IAnalysisProvider.ts` + `src/providers/openai.provider.ts` | Swappable AI backend. The strategy (which LLM to call) is injected at construction time, not hardcoded. |
+| **Singleton** | `getAuditService()`, `getLangfuse()`, `initSentry()` | One instance per process lifetime. Lazy initialisation (`instance ??= new X()`) prevents multiple DB connections or SDK clients. |
+| **Factory** | `src/utils/response.factory.ts` | Static factory class producing typed `{ status, body }` objects. Controllers destructure these and pass them directly to `res.status().json()`. |
+| **Adapter** | `src/providers/openai.provider.ts` | Wraps the OpenAI SDK (third-party) behind the `IAnalysisProvider` interface (domain). The rest of the codebase never imports `openai` directly. |
+| **Middleware Chain** | `src/app.ts` | Express middleware stack: `helmet` → `cors` → body parsers → routes → 404 → Sentry error handler → global error handler. Each middleware is a single-purpose function. |
+| **Proxy** | `apps/web/src/app/api/proxy/*/route.ts` | Next.js Route Handlers act as server-side proxies — they read the `httpOnly` cookie and attach a `Bearer` token before forwarding to the Express API. |
+| **DTO (Data Transfer Object)** | `CreateSubmissionDto`, `CreateAuditLogDto`, `LoginDto` etc. | Typed boundary objects at each layer transition. Input is validated by Zod before a DTO is constructed. |
+| **Constructor Injection** | All route files | Manual dependency injection without an IoC container: `new AuthController(new AuthService(new UserRepository()))`. Dependencies flow inward; concrete classes are only named at the outermost layer. |
+| **Fire-and-Forget** | `src/services/audit.service.ts` — `log()` method | Audit writes are initiated but never awaited. A `.catch()` sends any failure to Sentry. The HTTP response is never delayed by audit I/O. |
+
+---
+
+### 4. Branching Strategy
+
+This project follows a **Git Flow–inspired** branching model with one branch per deliverable.
+
+```
+main          ← production-ready; auto-deploys to Railway on push
+  └─ develop  ← integration branch; all features merge here first
+       ├─ feat/project-setup-and-tooling
+       ├─ feat/database-schema-and-migrations
+       ├─ feat/auth-module
+       ├─ feat/content-submission-api
+       ├─ feat/ai-moderation-layer
+       ├─ feat/moderation-dashboard
+       ├─ feat/testing-suite
+       ├─ feat/containerisation-and-deployment
+       ├─ feat/langfuse-observability
+       ├─ feat/sentry-integration
+       └─ fix/bugs
+```
+
+
+**Merge policy:**
+1. All feature branches target `develop`
+2. CI must pass (typecheck + lint + 25 tests) before merge
+3. `develop` → `main` via release PR — triggers Railway auto-deploy
+
+---
+
+### 5. Database Migration Strategy
+
+Schema evolution is managed entirely through **Prisma Migrate** with zero manual SQL.
+
+| Command | When to use |
+|---|---|
+| `pnpm --filter @repo/database db:migrate` | Local dev — creates a new migration file and applies it |
+| `pnpm --filter @repo/database db:deploy` | CI / production — applies pending migrations only, no new files created |
+| `pnpm --filter @repo/database db:reset` | Local only — drops all tables, re-applies all migrations, re-seeds |
+| `pnpm --filter @repo/database db:seed` | Local / staging — inserts test users and submissions |
+| `pnpm --filter @repo/database db:studio` | Local — opens Prisma Studio visual DB browser |
+
+**Migration history:**
+
+| Migration | Contents |
+|---|---|
+| `20260611173520_init` | 4 tables (`users`, `submissions`, `moderation_logs`, `ai_analyses`), 5 enums, 8 indexes, FK constraints |
+| `20260613171742_add_audit_log` | `audit_logs` table, `AuditAction` enum (10 values), 4 indexes |
+
+**Production safety:**
+- `prisma migrate deploy` runs automatically inside the API Docker `CMD` on every container startup — schema and code are always in lockstep with no manual step
+- Rollback = a new corrective migration (Prisma has no native rollback command)
+- `migration_lock.toml` prevents two containers from running migrations simultaneously
+- `seed.ts` exits immediately if `NODE_ENV === 'production'` — no default credentials can be created in production
+
+---
+
+### 6. Deployment & Release Strategy
+
+**Platform:** Railway (managed PaaS — no infrastructure to manage)
+
+**Deployment model:** Rolling Deployment
+
+Railway replaces containers one at a time. The old container continues serving traffic until the new one passes its health check, then traffic switches over. This gives zero-downtime deploys without requiring a load balancer configuration.
+
+**Release flow:**
+
+```
+feat/* branch
+  → PR to develop
+  → CI: typecheck + lint + 25 tests (against ephemeral PostgreSQL)
+  → Merge to develop
+  → PR to main
+  → Merge to main
+  → Railway auto-deploys API and Web containers
+  → API startup: prisma migrate deploy (schema in sync)
+  → Health checks: HEALTHCHECK in both Dockerfiles
+  → Traffic switches when health check passes
+```
+
+**Docker build strategy (multi-stage):**
+
+```dockerfile
+Stage 1: builder   — installs all deps, compiles TypeScript, generates Prisma client
+Stage 2: runner    — copies only compiled output, no devDependencies, minimal attack surface
+```
+
+**Container security:**
+- API runs as `nodeuser` (uid 1001, gid 1001) — not root
+- Web runs as `nextjs` (uid 1001) — not root
+- Both have `HEALTHCHECK` — Railway restarts unhealthy containers automatically
+
+**`NEXT_PUBLIC_*` vars** are baked at build time via Docker `ARG` → `ENV` → `next build`. They cannot be changed at runtime without rebuilding the image.
+
+**Rollback procedure:** Select a previous deployment in the Railway dashboard and redeploy. The previous image is retained. `prisma migrate deploy` on the old image is a no-op if the schema matches.
+
+---
+
+### 7. Scalability & Maintainability
+
+**Extensibility by design:**
+
+| Decision | Benefit |
+|---|---|
+| `IAnalysisProvider` interface | Swap OpenAI for any LLM (Claude, Gemini, local) by adding one class — zero changes to services or tests |
+| Repository pattern | Add a new data store (Redis cache, S3) by implementing an interface — service layer is untouched |
+| Monorepo with package boundaries | `packages/database` can be imported by any future `apps/*` without schema duplication |
+
+**Performance decisions:**
+
+| Decision | Benefit |
+|---|---|
+| `Promise.all([findMany, count])` in `SubmissionRepository.list()` | Parallelises two DB queries — halves latency on the most-hit endpoint |
+| `UNIQUE(submissionId)` on `ai_analyses` | Prevents duplicate OpenAI calls at the DB level, not just the service layer |
+| 10+ composite indexes on `status`, `type`, `submittedAt`, `moderatorId + createdAt` | All list and filter queries use index scans, not full table scans |
+| Next.js server components | HTML rendered on the server — no client-side data fetching waterfall |
+| AI result cached on first analysis | Subsequent requests are a single DB read |
+
+**Observability (three independent layers):**
+
+```
+Sentry      → application errors, slow requests, session replay (what broke)
+Langfuse    → LLM prompt/response/latency/score per analysis call (what the AI did)
+audit_logs  → compliance trail of every user action (who did what and when)
+```
+
+**Quality gates enforced in CI:**
+
+- TypeScript strict mode — no implicit `any`
+- ESLint `no-explicit-any` error, `no-unused-vars` error
+- 80% line/function coverage, 75% branch coverage (vitest thresholds)
+- All 25 tests must pass against a real PostgreSQL instance
+
+---
+
+### 8. Development Standards
+
+**TypeScript & Code Style**
+
+All packages use TypeScript with strict mode. Code style is enforced by ESLint and Prettier — no manual formatting decisions.
+
+| Tool | Key rules |
+|---|---|
+| ESLint | `no-explicit-any` (error), `no-unused-vars` (error), `explicit-function-return-type` (warn) |
+| Prettier | `singleQuote: true`, `semi: true`, `trailingComma: 'es5'`, `printWidth: 100` |
+| TypeScript | Strict mode, `noImplicitAny`, path aliases via `tsconfig.json` |
+
+**Error Handling Strategy**
+
+All application errors extend a single `AppError` base class with a `statusCode` and `code` field. The global error handler in `src/middleware/error-handler.ts` is the single exit point for all errors.
+
+```
+AppError (base)
+  ├── NotFoundError          → 404  NOT_FOUND
+  ├── UnauthorizedError      → 401  UNAUTHORIZED
+  ├── ForbiddenError         → 403  FORBIDDEN
+  ├── BadRequestError        → 400  BAD_REQUEST
+  ├── ConflictError          → 409  CONFLICT
+  └── InvalidStatusTransitionError → 400  INVALID_STATUS_TRANSITION
+```
+
+Sentry filtering: `4xx AppErrors` are captured as breadcrumbs only (expected client errors, not bugs). `5xx` and unexpected errors are fully captured with stack trace and user context.
+
+**Security Standards**
+
+| Practice | Implementation |
+|---|---|
+| Token storage | JWT in `httpOnly`, `secure`, `sameSite=strict` cookies — inaccessible to JavaScript |
+| Password hashing | bcrypt with 12 salt rounds (constant-time comparison via `bcrypt.compare`) |
+| Input validation | Zod schemas on all request bodies and query params via `validate` middleware |
+| Rate limiting | Login: 10 requests / 15 min per IP. AI analysis: 20 requests / hour per user |
+| Security headers | `X-Frame-Options: DENY`, `HSTS`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy` |
+| PII scrubbing | Sentry `beforeSend` strips `request.cookies` and `Authorization` headers before any event is shipped |
+| Production seed guard | `seed.ts` exits immediately if `NODE_ENV === 'production'` |
+| Container hardening | Non-root users (`nodeuser`, `nextjs`) in both Docker images |
+
+**Testing Approach**
+
+| Layer | Framework | What is tested |
+|---|---|---|
+| Unit — Services | Vitest + mocked repositories | Business logic, status transitions, AI fallback, bcrypt comparison |
+| Unit — Repositories | Vitest + mocked Prisma | Query construction, filter logic, pagination |
+| Integration — Routes | Vitest + Supertest + real Prisma | Full HTTP request lifecycle against mocked DB layer |
+| CI environment | GitHub Actions + ephemeral PostgreSQL | All 25 tests run against a real database on every PR |
+
+Coverage thresholds enforced: **80% lines/functions/statements, 75% branches**.
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -393,11 +652,6 @@ graph TB
     API -.->|on startup| MIG[prisma migrate deploy]
     MIG --> PG
 ```
-
-
-
-
----
 
 ## Database Schema
 
