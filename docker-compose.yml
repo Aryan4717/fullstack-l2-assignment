@@ -17,6 +17,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - db-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
 
   api:
     build:
@@ -26,7 +33,7 @@ services:
     ports:
       - '4000:4000'
     environment:
-      NODE_ENV: production
+      NODE_ENV: ${NODE_ENV:-development}
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-moderation_db}
       JWT_SECRET: ${JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
@@ -35,24 +42,60 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       OPENAI_TIMEOUT_MS: ${OPENAI_TIMEOUT_MS:-15000}
-      PORT: 4000
-      FRONTEND_URL: http://localhost:3000
+      PORT: ${PORT:-4000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-https://cloud.langfuse.com}
+      SENTRY_DSN: ${SENTRY_DSN}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-development}
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - db-net
+      - web-net
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
 
   web:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
+        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN}
+        SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN}
+        SENTRY_ORG: ${SENTRY_ORG}
+        SENTRY_PROJECT: ${SENTRY_PROJECT}
     restart: unless-stopped
     ports:
       - '3000:3000'
     environment:
-      NODE_ENV: production
-      NEXT_PUBLIC_API_URL: http://localhost:4000
+      NODE_ENV: ${NODE_ENV:-development}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
+      NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN}
+      SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN}
+      SENTRY_ORG: ${SENTRY_ORG}
+      SENTRY_PROJECT: ${SENTRY_PROJECT}
     depends_on:
       - api
+    networks:
+      - web-net
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
 
 volumes:
   postgres_data:
+
+networks:
+  db-net:
+    driver: bridge
+  web-net:
+    driver: bridge
