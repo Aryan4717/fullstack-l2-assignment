@@ -94,6 +94,7 @@ model ModerationLog {
   moderator    User             @relation(fields: [moderatorId], references: [id])
 
   @@index([submissionId])
+  @@index([moderatorId, createdAt])
   @@map("moderation_logs")
 }
 
