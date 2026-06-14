@@ -314,10 +314,10 @@ sequenceDiagram
     A->>A: bcrypt.compare(pwd, hash)
     A-->>W: 200 + Set-Cookie: accessToken (httpOnly)
     W->>B: Forward Set-Cookie
-    Note over B: Cookie stored by browser\nJS cannot read it
+    Note over B: Cookie stored by browser - JS cannot read it
     B->>W: GET /dashboard
     W->>W: cookies().get('accessToken') — server-side
-    W->>A: GET /api/submissions — Authorization: Bearer <token>
+    W->>A: GET /api/submissions - Authorization: Bearer {token}
     A->>A: verifyAccessToken(token)
     A-->>W: submissions JSON
     W-->>B: Rendered server HTML
@@ -346,7 +346,7 @@ graph TD
     subgraph Server["Server-Side — Node.js process"]
         SC[Server Components\nDashboard · SubmissionList · StatsBar · Detail]
         LAY[Root Layout\nJWT parse for email + role display]
-        PROXY[Route Handlers\n/api/proxy/* — read cookie → add Bearer]
+        PROXY[Route Handlers\n/api/proxy - read cookie and add Bearer]
     end
     subgraph Browser["Client-Side — Browser"]
         CC[Client Components\nLoginForm · AIAnalysisPanel\nModerationActions · NavDrawer · Filters]
@@ -384,15 +384,15 @@ graph LR
 
 ```mermaid
 graph TB
-    USER[User Browser] -->|HTTPS| RAIL[Railway Load Balancer\nSSL Termination]
+    USER[User Browser] -->|HTTPS| RAIL[Railway Load Balancer - SSL Termination]
     RAIL --> WEB[Next.js container :3000]
     RAIL --> API[Express container :4000]
     WEB -->|server-side fetch| API
     API -->|Prisma| PG[(PostgreSQL 16 :5432)]
-    PG --- VOL[(postgres-volume — persistent)]
+    PG --- VOL[(postgres-volume - persistent)]
     API -.->|on startup| MIG[prisma migrate deploy]
     MIG --> PG
-`
+```
 
 
 
