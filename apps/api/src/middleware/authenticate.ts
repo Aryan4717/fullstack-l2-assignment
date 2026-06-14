@@ -5,14 +5,6 @@ import { ResponseFactory } from '../utils/response.factory';
 import { Sentry } from '../lib/sentry.client';
 import { getAuditService, AuditAction } from '../services/audit.service';
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: { id: string; email: string; role: string };
-    }
-  }
-}
-
 export function authenticate(req: Request, res: Response, next: NextFunction): void {
   try {
     const authHeader = req.headers.authorization;
