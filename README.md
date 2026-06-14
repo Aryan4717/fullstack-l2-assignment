@@ -235,6 +235,166 @@ One example where the suggestion was wrong: Claude initially suggested storing t
 
 
 
+---
+
+## System Architecture
+
+### High-Level Overview
+
+```mermaid
+graph TB
+    subgraph Railway Cloud
+        subgraph Web["@repo/web · Port 3000"]
+            N[Next.js 14\nApp Router]
+        end
+        subgraph API["@repo/api · Port 4000"]
+            E[Express.js]
+        end
+        subgraph DB["Postgres · Port 5432"]
+            P[(PostgreSQL 16)]
+            V[(postgres-volume)]
+        end
+    end
+
+    Browser -->|HTTPS| N
+    N -->|Bearer token — server-side only| E
+    E -->|Prisma ORM| P
+    P --- V
+    E -->|LLM traces| Langfuse[Langfuse]
+    E -->|errors + spans| Sentry[Sentry]
+    N -->|errors + replay| Sentry
+    E -->|analysis| OpenAI[OpenAI GPT-4o-mini]
+```
+
+### Backend Request Lifecycle
+
+Every request travels the same path — no shortcuts:
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant MW as Middleware Stack
+    participant CT as Controller
+    participant SV as Service
+    participant RP as Repository
+    participant DB as PostgreSQL
+    participant AU as AuditService
+
+    C->>MW: HTTP Request
+    MW->>MW: helmet · cors · bodyParser · cookieParser
+    MW->>MW: authenticate — JWT verify
+    MW->>MW: authorize — role check
+    MW->>CT: next()
+    CT->>SV: call service method
+    SV->>RP: query via repository interface
+    RP->>DB: Prisma query
+    DB-->>RP: result
+    RP-->>SV: domain object
+    SV-->>CT: result
+    CT->>AU: auditService.log() — fire-and-forget
+    CT-->>C: JSON response
+    AU->>DB: INSERT audit_logs (async, never blocks)
+```
+
+### Authentication Architecture
+
+JWT tokens live exclusively in `httpOnly` cookies — JavaScript cannot read them, eliminating the XSS token-theft surface. Because client components cannot attach the cookie cross-origin, all mutations route through Next.js server-side handlers that read the cookie server-side and forward it as `Bearer`.
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant W as Next.js Web
+    participant A as Express API
+    participant DB as PostgreSQL
+
+    B->>W: POST /api/auth/login {email, pwd}
+    W->>A: POST /api/auth/login (proxy)
+    A->>DB: SELECT user WHERE email = ?
+    DB-->>A: user record
+    A->>A: bcrypt.compare(pwd, hash)
+    A-->>W: 200 + Set-Cookie: accessToken (httpOnly)
+    W->>B: Forward Set-Cookie
+    Note over B: Cookie stored by browser\nJS cannot read it
+    B->>W: GET /dashboard
+    W->>W: cookies().get('accessToken') — server-side
+    W->>A: GET /api/submissions — Authorization: Bearer <token>
+    A->>A: verifyAccessToken(token)
+    A-->>W: submissions JSON
+    W-->>B: Rendered server HTML
+```
+
+### Authorization Flow
+
+```mermaid
+flowchart TD
+    REQ[Incoming Request] --> CHK{Has token?}
+    CHK -- No --> A401[401 Unauthorized\naudit: AUTH_FAILED]
+    CHK -- Yes --> VER{Token valid?}
+    VER -- No --> A401
+    VER -- Yes --> SET[Set req.user\nSentry.setUser]
+    SET --> ROLE{Route requires role?}
+    ROLE -- No --> NEXT[next — proceed to controller]
+    ROLE -- Yes --> CHK2{req.user.role\nin allowed roles?}
+    CHK2 -- No --> A403[403 Forbidden\naudit: UNAUTHORIZED_ACCESS]
+    CHK2 -- Yes --> NEXT
+```
+
+### Frontend Architecture
+
+```mermaid
+graph TD
+    subgraph Server["Server-Side — Node.js process"]
+        SC[Server Components\nDashboard · SubmissionList · StatsBar · Detail]
+        LAY[Root Layout\nJWT parse for email + role display]
+        PROXY[Route Handlers\n/api/proxy/* — read cookie → add Bearer]
+    end
+    subgraph Browser["Client-Side — Browser"]
+        CC[Client Components\nLoginForm · AIAnalysisPanel\nModerationActions · NavDrawer · Filters]
+    end
+    SC -->|server fetch + Bearer| API[Express API :4000]
+    CC -->|fetch → proxy| PROXY
+    PROXY -->|Bearer token| API
+    LAY -->|httpOnly cookie| SC
+```
+
+### Observability Stack
+
+```mermaid
+graph LR
+    subgraph Application
+        API[Express API]
+        WEB[Next.js Web]
+    end
+    subgraph Sentry
+        SN[errors · performance spans\nsession replay · user context]
+    end
+    subgraph Langfuse
+        LF[prompts · token counts\nlatency · toxicity scores]
+    end
+    subgraph AuditDB["PostgreSQL audit_logs"]
+        DB[(every login · auth fail\nstatus change · AI trigger)]
+    end
+    API -->|captureException\nbreadcrumbs · setUser| SN
+    WEB -->|captureException + replay| SN
+    API -->|trace · generation · score| LF
+    API -->|INSERT fire-and-forget| DB
+```
+
+### Deployment Architecture
+
+```mermaid
+graph TB
+    USER[User Browser] -->|HTTPS| RAIL[Railway Load Balancer\nSSL Termination]
+    RAIL --> WEB[Next.js container :3000]
+    RAIL --> API[Express container :4000]
+    WEB -->|server-side fetch| API
+    API -->|Prisma| PG[(PostgreSQL 16 :5432)]
+    PG --- VOL[(postgres-volume — persistent)]
+    API -.->|on startup| MIG[prisma migrate deploy]
+    MIG --> PG
+`
+
+
 
 
 ---

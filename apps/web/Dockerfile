@@ -16,6 +16,18 @@ COPY apps/web ./apps/web
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
+ARG NEXT_PUBLIC_SENTRY_DSN
+ENV NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN}
+
+ARG SENTRY_AUTH_TOKEN
+ENV SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN}
+
+ARG SENTRY_ORG
+ENV SENTRY_ORG=${SENTRY_ORG}
+
+ARG SENTRY_PROJECT
+ENV SENTRY_PROJECT=${SENTRY_PROJECT}
+
 RUN pnpm --filter @repo/web run build
 
 # ─── Stage 2: Production ──────────────────────────────────────────────────────
@@ -39,5 +51,8 @@ USER nextjs
 EXPOSE 3000
 ENV HOSTNAME="0.0.0.0"
 ENV PORT=3000
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/', (r) => { process.exit(r.statusCode < 500 ? 0 : 1) }).on('error', () => process.exit(1))"
 
 CMD ["node", "apps/web/server.js"]

@@ -39,6 +39,13 @@ COPY apps/api/package.json ./apps/api/
 
 WORKDIR /app/apps/api
 
+# Run as non-root user — prevents container escape privilege escalation
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 --ingroup nodejs nodeuser
+USER nodeuser
+
 EXPOSE 4000
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:4000/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"
 
 CMD ["sh", "-c", "prisma migrate deploy --schema /app/packages/database/prisma/schema.prisma && node /app/packages/database/dist/prisma/seed.js && node --require ./dist/instrument.js dist/server.js"]

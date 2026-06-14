@@ -4,6 +4,11 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main(): Promise<void> {
+  if (process.env['NODE_ENV'] === 'production') {
+    console.warn('⚠️  Seed skipped: NODE_ENV=production. Run seed only in development/staging.');
+    return;
+  }
+
   console.log('🌱 Seeding database...');
 
   const SALT_ROUNDS = 12;
